@@ -1,0 +1,32 @@
+from django.contrib import admin
+
+# Register your models here.
+
+from django.contrib import admin
+from .models import User, Product, Order, OrderItem, CartItem, Wishlist
+
+# Register the Custom User Model
+@admin.register(User)
+class UserAdmin(admin.ModelAdmin):
+    list_display = ('username', 'email', 'role', 'is_blocked', 'is_active')
+    list_filter = ('role', 'is_blocked')
+    search_fields = ('username', 'email')
+
+# Register the Product Model
+@admin.register(Product)
+class ProductAdmin(admin.ModelAdmin):
+    list_display = ('name', 'category', 'price', 'count', 'is_active')
+    list_filter = ('category', 'is_active')
+    search_fields = ('name', 'description')
+
+# Register the Order Model
+@admin.register(Order)
+class OrderAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'total_amount', 'status', 'created_at')
+    list_filter = ('status', 'created_at')
+    search_fields = ('user__username', 'id')
+
+# Register other models simply
+admin.site.register(CartItem)
+admin.site.register(Wishlist)
+admin.site.register(OrderItem)
