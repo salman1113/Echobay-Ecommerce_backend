@@ -1,14 +1,21 @@
 from pathlib import Path
 from datetime import timedelta
+import os
+from dotenv import load_dotenv # 👈 പുതിയ Import
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-433lpf@jma8-1$*h3pvqj_85zb7y(1)mt%i_=ozhv&(7g89i3f'
+# 👇 രഹസ്യ കീ .env ഫയലിൽ നിന്ന് എടുക്കുന്നു
+SECRET_KEY = os.getenv('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# 👇 ഡീബഗ് മോഡ് .env ഫയലിൽ നിന്ന് നിയന്ത്രിക്കാം
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = []
 
@@ -51,8 +58,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    
-    # 'allauth.account.middleware.AccountMiddleware', # KEEP COMMENTED (For v0.54.0)
 ]
 
 ROOT_URLCONF = 'backend.urls'
@@ -60,7 +65,7 @@ ROOT_URLCONF = 'backend.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [os.path.join(BASE_DIR, 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -80,7 +85,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'ecobay_db',
         'USER': 'postgres',      
-        'PASSWORD': 'salman1113',  
+        'PASSWORD': os.getenv('DB_PASSWORD'),  # 👈 Database Password Hidden
         'HOST': 'localhost',
         'PORT': '5432',
     }
@@ -123,11 +128,8 @@ AUTHENTICATION_BACKENDS = [
 # REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        # Bearer Token (JWT - For normal login)
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-        # Token Auth (Standard Token - For Google Login Fallback)
         'rest_framework.authentication.TokenAuthentication',
-        # Session Auth (For Django Admin Panel)
         'rest_framework.authentication.SessionAuthentication',
     ),
 }
@@ -140,15 +142,19 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
 }
 
-# dj-rest-auth Configuration
+# --- dj-rest-auth Configuration ---
 REST_AUTH = {
     'USE_JWT': True,
     'JWT_AUTH_COOKIE': None,
     'JWT_AUTH_REFRESH_COOKIE': None,
-    
-    # 🌟 NEW: Custom Serializer to fetch Google Image & Name 🌟
     'USER_DETAILS_SERIALIZER': 'api.serializers.CustomUserSerializer',
+    'PASSWORD_RESET_USE_SITES_DOMAIN': True,
+    'OLD_PASSWORD_FIELD_ENABLED': True,
+    'PASSWORD_RESET_SERIALIZER': 'api.serializers.CustomPasswordResetSerializer',
 }
+
+PASSWORD_RESET_CONFIRM_URL = 'password-reset/confirm/{uid}/{token}'
+
 
 # Allauth Configuration
 ACCOUNT_EMAIL_VERIFICATION = 'none' 
@@ -156,30 +162,22 @@ ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_USERNAME_REQUIRED = False
 ACCOUNT_AUTHENTICATION_METHOD = 'username_email'
-
-# Connect Google login to existing email accounts automatically
 SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
 SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
 
-# Google Provider
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
-        'SCOPE': [
-            'profile',
-            'email',
-        ],
-        'AUTH_PARAMS': {
-            'access_type': 'online',
-        }
+        'SCOPE': ['profile', 'email'],
+        'AUTH_PARAMS': {'access_type': 'online'}
     }
 }
-
 
 # Email Configuration
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'mrsalmanxzs@gmail.com' 
-EMAIL_HOST_PASSWORD = 'bywk dfqk sjkm tfqq' 
+# 👇 Email Credentials Hidden
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER') 
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD') 
 DEFAULT_FROM_EMAIL = 'EchoBay <echobay@gmail.com>'

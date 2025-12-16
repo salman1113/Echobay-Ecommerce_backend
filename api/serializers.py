@@ -5,6 +5,10 @@ from .models import User, Product, CartItem, Wishlist, Order, OrderItem
 from dj_rest_auth.serializers import UserDetailsSerializer
 from allauth.socialaccount.models import SocialAccount
 
+from dj_rest_auth.serializers import PasswordResetSerializer
+from django.conf import settings
+from django.contrib.auth.forms import PasswordResetForm
+
 # 1. Custom User Serializer (For Login Response: Returns Image & Name)
 class CustomUserSerializer(UserDetailsSerializer):
     profile_image = serializers.SerializerMethodField()
@@ -85,3 +89,30 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = ['id', 'total_amount', 'status', 'created_at', 'shipping_details', 'items']
+
+
+class CustomPasswordResetSerializer(PasswordResetSerializer):
+    def get_email_options(self):
+        return {
+            'domain_override': 'localhost:5173',
+            'email_template_name': 'registration/password_reset_email.html',
+            'extra_email_context': {
+                'site_name': 'EchoBay'
+            }
+        }
+    
+    def save(self):
+        request = self.context.get('request')
+        # Allauth-നെ ഒഴിവാക്കി, നേരിട്ട് Django Form ഉപയോഗിക്കുന്നു
+        opts = {
+            'use_https': request.is_secure(),
+            'from_email': getattr(settings, 'DEFAULT_FROM_EMAIL', None),
+            'request': request,
+        }
+        opts.update(self.get_email_options())
+
+        # Standard Django PasswordResetForm
+        self.reset_form = PasswordResetForm(data=self.initial_data)
+        
+        if self.reset_form.is_valid():
+            self.reset_form.save(**opts)
