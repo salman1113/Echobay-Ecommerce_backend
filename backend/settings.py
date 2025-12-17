@@ -1,7 +1,7 @@
 from pathlib import Path
 from datetime import timedelta
 import os
-from dotenv import load_dotenv # 👈 പുതിയ Import
+from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
@@ -10,11 +10,9 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-# 👇 രഹസ്യ കീ .env ഫയലിൽ നിന്ന് എടുക്കുന്നു
 SECRET_KEY = os.getenv('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# 👇 ഡീബഗ് മോഡ് .env ഫയലിൽ നിന്ന് നിയന്ത്രിക്കാം
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = []
@@ -85,7 +83,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'ecobay_db',
         'USER': 'postgres',      
-        'PASSWORD': os.getenv('DB_PASSWORD'),  # 👈 Database Password Hidden
+        'PASSWORD': os.getenv('DB_PASSWORD'), 
         'HOST': 'localhost',
         'PORT': '5432',
     }

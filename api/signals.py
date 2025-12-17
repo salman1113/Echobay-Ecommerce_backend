@@ -8,10 +8,9 @@ import threading
 
 User = get_user_model()
 
-# --- 1. WELCOME EMAIL (Registration) ---
 def send_welcome_email_thread(user_email, username):
     try:
-        subject = 'Welcome to EchoBay! 🎉'
+        subject = 'Welcome to EchoBay!'
         message = f'Hi {username},\n\nThank you for registering with EchoBay. We are excited to have you on board!\n\nHappy Shopping!'
         
         send_mail(
@@ -21,15 +20,15 @@ def send_welcome_email_thread(user_email, username):
             [user_email],
             fail_silently=False,
         )
-        print(f"✅ Welcome email sent to {user_email}")
+        print(f"Welcome email sent to {user_email}")
     except Exception as e:
-        print(f"❌ Failed to send welcome email: {e}")
+        print(f"Failed to send welcome email: {e}")
 
 @receiver(post_save, sender=User)
 def on_user_signup(sender, instance, created, **kwargs):
     # 'created=True' means it's a new user
     if created and instance.email:
-        print(f"🆕 New User Registered: {instance.username}")
+        print(f"New User Registered: {instance.username}")
         
         display_name = instance.name if hasattr(instance, 'name') and instance.name else instance.username
         
@@ -40,7 +39,7 @@ def on_user_signup(sender, instance, created, **kwargs):
         email_thread.start()
 
 
-# --- 2. LOGIN ALERT (Login) ---
+# LOGIN ALERT (Login)
 def send_login_email_thread(user_email, username):
     try:
         subject = 'Security Alert: New Login Detected'
@@ -53,13 +52,13 @@ def send_login_email_thread(user_email, username):
             [user_email],
             fail_silently=False,
         )
-        print(f"✅ Login email sent to {user_email}")
+        print(f"Login email sent to {user_email}")
     except Exception as e:
-        print(f"❌ Failed to send login email: {e}")
+        print(f"Failed to send login email: {e}")
 
 @receiver(user_logged_in)
 def on_user_logged_in(sender, request, user, **kwargs):
-    print(f"🔔 User logged in: {user.username}")
+    print(f"User logged in: {user.username}")
     
     if user.email:
         first = getattr(user, 'first_name', '')

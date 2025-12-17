@@ -113,6 +113,5 @@ class CustomPasswordResetSerializer(PasswordResetSerializer):
 
         # Standard Django PasswordResetForm
         self.reset_form = PasswordResetForm(data=self.initial_data)
-        
         if self.reset_form.is_valid():
             self.reset_form.save(**opts)

@@ -78,7 +78,7 @@ class RegisterView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
 
 
-# 👇 NEW: Custom Login View (For Email Signal & User Data)
+# NEW: Custom Login View (For Email Signal & User Data)
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -90,7 +90,7 @@ class LoginView(APIView):
         user = authenticate(username=username, password=password)
         
         if user is not None:
-            # 2. 🔥 Trigger Django Login Signal (Sends Email)
+            # 2. Trigger Django Login Signal (Sends Email)
             login(request, user)
             
             # 3. Generate Tokens
@@ -213,7 +213,7 @@ class OrderView(APIView):
 
     def post(self, request):
         # Checkout logic
-        # 👇 Updated to match Frontend variable names (shipping_details, total_amount)
+        # Updated to match Frontend variable names (shipping_details, total_amount)
         shipping = request.data.get('shipping_details') 
         total = request.data.get('total_amount')
         payment_method = request.data.get('payment_method', 'cod') # Default to COD if missing
