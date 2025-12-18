@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, Product, CartItem, Wishlist, Order, OrderItem
+from .models import User, Product, CartItem, Wishlist, Order, OrderItem, Address, CancelledOrder 
 
 # --- NEW IMPORTS FOR GOOGLE AUTH ---
 from dj_rest_auth.serializers import UserDetailsSerializer
@@ -9,29 +9,35 @@ from dj_rest_auth.serializers import PasswordResetSerializer
 from django.conf import settings
 from django.contrib.auth.forms import PasswordResetForm
 
-# 1. Custom User Serializer (For Login Response: Returns Image & Name)
+# 1. Custom User Serializer (Fixed logic)
 class CustomUserSerializer(UserDetailsSerializer):
-    profile_image = serializers.SerializerMethodField()
+    image = serializers.SerializerMethodField()
     name = serializers.SerializerMethodField()
 
     class Meta(UserDetailsSerializer.Meta):
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'name', 'profile_image', 'role')
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'name', 'image', 'role')
         read_only_fields = ('email', 'role')
 
-    def get_profile_image(self, user):
-        # ഗൂഗിൾ അക്കൗണ്ടിൽ നിന്ന് ഫോട്ടോ എടുക്കുന്നു
+    def get_image(self, user):
         try:
             google_account = SocialAccount.objects.get(user=user, provider='google')
-            return google_account.extra_data.get('picture')
+            url = google_account.extra_data.get('picture') # ✅ URL വേരിയബിളിലേക്ക് മാറ്റുന്നു
+            
+            if url:
+                # http ഉണ്ടെങ്കിൽ അത് മാറ്റി https ആക്കുന്നു
+                if url.startswith('http://'):
+                    url = url.replace('http://', 'https://')
+            
+            return url # ✅ അവസാനം റിട്ടേൺ ചെയ്യുന്നു
+            
         except SocialAccount.DoesNotExist:
             return None
 
     def get_name(self, user):
-        # ഫസ്റ്റ് നെയിമും ലാസ്റ്റ് നെയിമും ചേർത്ത് ഫുൾ നെയിം ആക്കുന്നു
         full_name = f"{user.first_name} {user.last_name}".strip()
         return full_name if full_name else user.username
 
-# 2. User Serializer (For Manual Registration)
+# 2. User Serializer
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
 
@@ -77,6 +83,12 @@ class WishlistSerializer(serializers.ModelSerializer):
         fields = ['id', 'product', 'product_id']
 
 # 6. Order Serializers
+
+class CancelledOrderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CancelledOrder
+        fields = ['reason', 'cancelled_at', 'refund_status']
+
 class OrderItemSerializer(serializers.ModelSerializer):
     product = ProductSerializer(read_only=True)
     class Meta:
@@ -85,12 +97,21 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
+    cancellation_details = CancelledOrderSerializer(read_only=True) 
     
     class Meta:
         model = Order
-        fields = ['id', 'total_amount', 'status', 'created_at', 'shipping_details', 'items']
+        fields = ['id', 'total_amount', 'status', 'created_at', 'shipping_details', 'items', 'payment_method', 'cancellation_details']
 
 
+# 7. Address Serializer
+class AddressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Address
+        fields = ['id', 'name', 'phone', 'street', 'city', 'state', 'zip_code', 'is_default']
+        read_only_fields = ['user']
+
+# 8. Password Reset Serializer
 class CustomPasswordResetSerializer(PasswordResetSerializer):
     def get_email_options(self):
         return {
@@ -103,7 +124,6 @@ class CustomPasswordResetSerializer(PasswordResetSerializer):
     
     def save(self):
         request = self.context.get('request')
-        # Allauth-നെ ഒഴിവാക്കി, നേരിട്ട് Django Form ഉപയോഗിക്കുന്നു
         opts = {
             'use_https': request.is_secure(),
             'from_email': getattr(settings, 'DEFAULT_FROM_EMAIL', None),
@@ -111,7 +131,6 @@ class CustomPasswordResetSerializer(PasswordResetSerializer):
         }
         opts.update(self.get_email_options())
 
-        # Standard Django PasswordResetForm
         self.reset_form = PasswordResetForm(data=self.initial_data)
         if self.reset_form.is_valid():
             self.reset_form.save(**opts)

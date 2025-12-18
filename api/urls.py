@@ -14,13 +14,20 @@ from .views import (
     WishlistView, 
     OrderView, 
     GoogleLogin,
-    custom_password_reset_confirm  # ✅ ഇത് ഇംപോർട്ട് ചെയ്തിട്ടുണ്ടെന്ന് ഉറപ്പുവരുത്തുക
+    AddressViewSet,
+    custom_password_reset_confirm,
+    # 👇 NEW: Payment Views Impoerted
+    CreatePaymentView, 
+    VerifyPaymentView,
+    CancelOrderView,
+    RetryPaymentView
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 from .serializers import CustomPasswordResetSerializer
 
 router = DefaultRouter()
 router.register(r'products', ProductViewSet)
+router.register(r'addresses', AddressViewSet, basename='addresses')
 
 urlpatterns = [
     # --- Authentication ---
@@ -33,15 +40,9 @@ urlpatterns = [
     path('user/', UserDetailsView.as_view(), name='user_details'),
     path('password/change/', PasswordChangeView.as_view(), name='rest_password_change'),
 
-    # 👇 1. Password Reset Request (Email Sending)
+    # Password Reset
     path('password/reset/', PasswordResetView.as_view(serializer_class=CustomPasswordResetSerializer), name='rest_password_reset'),
-
-    # 👇 2. Link Generation (Django needs this to create the email link)
-    # ഇത് മാറ്റരുത്, ഇമെയിൽ ലിങ്ക് ജനറേറ്റ് ചെയ്യാൻ ഇത് ആവശ്യമാണ്.
     path('password/reset/confirm/<uidb64>/<token>/', PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
-
-    # 👇 3. API Endpoint (React POSTs data here) - 🔥 UPDATED
-    # ഇവിടെയാണ് നമ്മൾ നമ്മുടെ പുതിയ Custom Function കണക്ട് ചെയ്തത്.
     path('password/reset/confirm/', custom_password_reset_confirm, name='password_reset_confirm_api'),
 
     # --- Shop Logic ---
@@ -51,4 +52,10 @@ urlpatterns = [
     path('wishlist/', WishlistView.as_view(), name='wishlist'),
     path('wishlist/<int:pk>/', WishlistView.as_view(), name='wishlist-delete'),
     path('orders/', OrderView.as_view(), name='orders'),
+
+    # 👇 --- Payment URLs (Razorpay) ---
+    path('payment/create/', CreatePaymentView.as_view(), name='create-payment'),
+    path('payment/verify/', VerifyPaymentView.as_view(), name='verify-payment'),
+    path('orders/<int:pk>/cancel/', CancelOrderView.as_view(), name='cancel-order'),
+    path('orders/<int:pk>/retry-payment/', RetryPaymentView.as_view(), name='retry-payment'),
 ]

@@ -3,7 +3,7 @@ from django.contrib import admin
 # Register your models here.
 
 from django.contrib import admin
-from .models import User, Product, Order, OrderItem, CartItem, Wishlist
+from .models import User, Product, Order, OrderItem, CartItem, Wishlist, CancelledOrder, Address
 
 # Register the Custom User Model
 @admin.register(User)
@@ -29,4 +29,16 @@ class OrderAdmin(admin.ModelAdmin):
 # Register other models simply
 admin.site.register(CartItem)
 admin.site.register(Wishlist)
-admin.site.register(OrderItem)
+admin.site.register(Address)
+
+
+@admin.register(CancelledOrder)
+class CancelledOrderAdmin(admin.ModelAdmin):
+    list_display = ('order', 'cancelled_by', 'refund_status', 'cancelled_at')
+    list_filter = ('refund_status', 'cancelled_at')
+
+@admin.register(OrderItem)
+class OrderItemAdmin(admin.ModelAdmin):
+    list_display = ('id', 'order', 'product', 'quantity', 'price') # ടേബിളിൽ കാണിക്കേണ്ടവ
+    list_filter = ('order',) # ഫിൽറ്റർ ചെയ്യാൻ
+    search_fields = ('product__name', 'order__id') # സെർച്ച് ചെയ്യാൻ
