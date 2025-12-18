@@ -200,7 +200,7 @@ class WishlistView(APIView):
         return Response({'message': 'Removed'})
 
 
-# --- Orders & Checkout ---
+# Orders & Checkout
 class OrderView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -212,41 +212,50 @@ class OrderView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
     def post(self, request):
-        # Checkout logic
-        # Updated to match Frontend variable names (shipping_details, total_amount)
+        # 1. Get Data
         shipping = request.data.get('shipping_details') 
         total = request.data.get('total_amount')
-        payment_method = request.data.get('payment_method', 'cod') # Default to COD if missing
+        payment_method = request.data.get('payment_method', 'cod')
         
-        # Check if cart is empty
+        if not shipping or not total:
+             return Response(
+                 {'error': 'Missing shipping details or total amount'}, 
+                 status=status.HTTP_400_BAD_REQUEST
+             )
+
+        # 3. Check Cart
         cart_items = CartItem.objects.filter(user=request.user)
         if not cart_items.exists():
              return Response({'error': 'Cart is empty'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Create Order
-        order = Order.objects.create(
-            user=request.user,
-            total_amount=total,
-            shipping_details=shipping,
-            payment_method=payment_method,
-            status='processing'
-        )
-
-        # Move Cart items to Order Items
-        for item in cart_items:
-            OrderItem.objects.create(
-                order=order,
-                product=item.product,
-                quantity=item.quantity,
-                price=item.product.price
+        try:
+            # 4. Create Order
+            order = Order.objects.create(
+                user=request.user,
+                total_amount=total,
+                shipping_details=shipping,
+                payment_method=payment_method,
+                status='processing'
             )
-            
-            # Decrease Stock (Check if count > quantity to avoid negative stock)
-            if item.product.count >= item.quantity:
-                item.product.count -= item.quantity
-                item.product.save()
 
-        # Clear Cart
-        cart_items.delete()
+            # 5. Move Items
+            for item in cart_items:
+                OrderItem.objects.create(
+                    order=order,
+                    product=item.product,
+                    quantity=item.quantity,
+                    price=item.product.price
+                )
+                
+                # Decrease Stock
+                if item.product.count >= item.quantity:
+                    item.product.count -= item.quantity
+                    item.product.save()
 
-        return Response({'message': 'Order placed successfully', 'order_id': order.id}, status=status.HTTP_201_CREATED)
+            # 6. Clear Cart
+            cart_items.delete()
+
+            return Response({'message': 'Order placed successfully', 'order_id': order.id}, status=status.HTTP_201_CREATED)
+        
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -10,6 +10,7 @@ class User(AbstractUser):
     is_blocked = models.BooleanField(default=False)
     
 
+
 # Product Model
 class Product(models.Model):
     name = models.CharField(max_length=255)
