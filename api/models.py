@@ -30,8 +30,6 @@ class Product(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
     count = models.PositiveIntegerField(default=0) 
     category = models.CharField(max_length=100)
-    
-    # ✅ FIX: Main Image (Thumbnail) - കാർഡുകളിൽ കാണിക്കാൻ
     image = models.ImageField(upload_to='products/', null=True, blank=True)
     
     is_active = models.BooleanField(default=True)
@@ -40,13 +38,11 @@ class Product(models.Model):
     def __str__(self):
         return self.name
 
-# ✅ NEW: Product Gallery (For Multiple Images)
 # backend/api/models.py
-
 class ProductImage(models.Model):
     product = models.ForeignKey(Product, related_name='images', on_delete=models.CASCADE)
-    image = models.ImageField(upload_to='products/gallery/', null=True, blank=True) # 👈 അപ്‌ലോഡ് ചെയ്യാൻ
-    external_url = models.URLField(max_length=500, null=True, blank=True) # 👈 ലിങ്ക് കൊടുക്കാൻ (പുതിയത്)
+    image = models.ImageField(upload_to='products/gallery/', null=True, blank=True)
+    external_url = models.URLField(max_length=500, null=True, blank=True) 
     
     def __str__(self):
         return f"{self.product.name} Image"

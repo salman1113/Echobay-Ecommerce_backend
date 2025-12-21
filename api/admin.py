@@ -1,10 +1,9 @@
 from django.contrib import admin
 from .models import User, Product, ProductImage, Order, OrderItem, CartItem, Wishlist, CancelledOrder, Address
 
-# ✅ 1. Product Image Inline (ഇത് പ്രോഡക്റ്റിന്റെ കൂടെ താഴെ ഇമേജ് ചേർക്കാൻ സഹായിക്കും)
 class ProductImageInline(admin.TabularInline):
     model = ProductImage
-    extra = 1  # ഒരു സമയം ഒരു എക്സ്ട്രാ ബോക്സ് കാണിക്കും
+    extra = 1  
 
 # Register the Custom User Model
 @admin.register(User)
@@ -19,8 +18,6 @@ class ProductAdmin(admin.ModelAdmin):
     list_display = ('name', 'category', 'price', 'count', 'is_active')
     list_filter = ('category', 'is_active')
     search_fields = ('name', 'description')
-    
-    # 👇 ഈ വരിയാണ് മൾട്ടിപ്പിൾ ഇമേജ് കാണിക്കുന്നത്
     inlines = [ProductImageInline] 
 
 # Register the Order Model
@@ -34,7 +31,6 @@ class OrderAdmin(admin.ModelAdmin):
 admin.site.register(CartItem)
 admin.site.register(Wishlist)
 admin.site.register(Address)
-# admin.site.register(ProductImage) # Inline കൊടുത്തത് കൊണ്ട് ഇത് വേണമെന്നില്ല
 
 @admin.register(CancelledOrder)
 class CancelledOrderAdmin(admin.ModelAdmin):

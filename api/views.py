@@ -35,10 +35,7 @@ from .serializers import (
 User = get_user_model()
 client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
-# ==========================================
 #  AUTHENTICATION
-# ==========================================
-
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def custom_password_reset_confirm(request):
@@ -92,10 +89,7 @@ class GoogleLogin(SocialLoginView):
         resp.data['user'] = CustomUserSerializer(self.user).data
         return Response
 
-# ==========================================
 #  PRODUCTS (Public & User View)
-# ==========================================
-
 class ProductPagination(PageNumberPagination):
     page_size = 8
     page_size_query_param = 'page_size'
@@ -122,10 +116,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             qs = qs.filter(category__iexact=category)
         return qs
 
-# ==========================================
 #  CART & WISHLIST & ADDRESS
-# ==========================================
-
 class AddressViewSet(viewsets.ModelViewSet):
     serializer_class = AddressSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -134,16 +125,10 @@ class AddressViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
-# ==========================================
 #  CART & WISHLIST & ADDRESS
-# ==========================================
-
-# ... AddressViewSet പഴയത് പോലെ നിൽക്കട്ടെ ...
-
 class CartView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     def get(self, request):
-        # 👇 CHANGE HERE: context={'request': request} ചേർത്തു
         serializer = CartItemSerializer(CartItem.objects.filter(user=request.user), many=True, context={'request': request})
         return Response(serializer.data)
 
@@ -168,7 +153,6 @@ class CartView(APIView):
 class WishlistView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     def get(self, request):
-        # 👇 CHANGE HERE: context={'request': request} ചേർത്തു
         serializer = WishlistSerializer(Wishlist.objects.filter(user=request.user), many=True, context={'request': request})
         return Response(serializer.data)
 
@@ -181,10 +165,8 @@ class WishlistView(APIView):
     def delete(self, request, pk):
         Wishlist.objects.filter(user=request.user, id=pk).delete()
         return Response({'message': 'Removed'})
-# ==========================================
-#  USER ORDER MANAGEMENT
-# ==========================================
 
+#  USER ORDER MANAGEMENT
 class OrderViewSet(viewsets.ModelViewSet):
     serializer_class = OrderSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -279,10 +261,7 @@ class VerifyPaymentView(APIView):
             return Response({'message': 'Verified'}, 200)
         except Exception as e: return Response({'error': str(e)}, 400)
 
-# ==========================================
-#  ADMIN PANEL (✅ UPDATED FOR LINKS & UPLOADS)
-# ==========================================
-
+#  ADMIN PANEL
 class AdminProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all().order_by('-id')
     serializer_class = ProductSerializer
@@ -297,7 +276,7 @@ class AdminProductViewSet(viewsets.ModelViewSet):
             qs = qs.filter(category__iexact=category)
         return qs
 
-    # ✅ CREATE: Handles Files AND Links
+    # CREATE: Handles Files AND Links
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -311,7 +290,7 @@ class AdminProductViewSet(viewsets.ModelViewSet):
         # 2. Handle External URLs (Paste Link)
         image_urls = request.POST.getlist('image_urls')
         for url in image_urls:
-            if url.strip(): # Check if not empty
+            if url.strip(): 
                 ProductImage.objects.create(product=product, external_url=url)
         
         # 3. Handle Main Image (Legacy)
@@ -321,7 +300,7 @@ class AdminProductViewSet(viewsets.ModelViewSet):
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    # ✅ UPDATE: Handles Files AND Links
+    # UPDATE: Handles Files AND Links
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
@@ -387,11 +366,10 @@ class AdminDashboardStatsView(APIView):
             status='cancelled'
         ).aggregate(total=Sum('total_amount'))['total'] or 0
 
-        # 👇 മാറ്റം ഇവിടെയാണ്: അഡ്മിൻ അല്ലാത്തവരെ (is_superuser=False) മാത്രം എണ്ണുന്നു
         total_customers = User.objects.filter(is_superuser=False).count()
 
         data = {
-            "total_users": total_customers, # Now strictly Customers
+            "total_users": total_customers, 
             "total_products": Product.objects.count(),
             "total_orders": Order.objects.count(),
             "products_sold": total_products_sold,

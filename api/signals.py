@@ -26,7 +26,6 @@ def send_welcome_email_thread(user_email, username):
 
 @receiver(post_save, sender=User)
 def on_user_signup(sender, instance, created, **kwargs):
-    # 'created=True' means it's a new user
     if created and instance.email:
         print(f"New User Registered: {instance.username}")
         

@@ -1,8 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Product, ProductImage, CartItem, Wishlist, Order, OrderItem, Address, CancelledOrder 
+from .models import Product, CartItem, Wishlist, Order, OrderItem, Address, CancelledOrder 
 
-# --- NEW IMPORTS FOR GOOGLE AUTH ---
 from dj_rest_auth.serializers import UserDetailsSerializer
 from allauth.socialaccount.models import SocialAccount
 from dj_rest_auth.serializers import PasswordResetSerializer
@@ -11,9 +10,7 @@ from django.contrib.auth.forms import PasswordResetForm
 
 User = get_user_model()
 
-# ==========================================
 #  1. USER SERIALIZERS
-# ==========================================
 class CustomUserSerializer(UserDetailsSerializer):
     image = serializers.SerializerMethodField()
     name = serializers.SerializerMethodField()
@@ -58,17 +55,13 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        # 👇 'is_superuser' ഇവിടെ ചേർത്തിട്ടുണ്ട്. ഇനി ഫ്രണ്ടെൻഡിൽ അഡ്മിനെ തിരിച്ചറിയാം.
         fields = ['id', 'username', 'email', 'date_joined', 'is_active', 'order_count', 'is_superuser']
 
     def get_order_count(self, user):
         return Order.objects.filter(user=user).count()
 
 
-# ==========================================
-#  2. PRODUCT SERIALIZER (✅ UPDATED LOGIC)
-# ==========================================
-
+#  2. PRODUCT SERIALIZER
 class ProductSerializer(serializers.ModelSerializer):
     images = serializers.SerializerMethodField()
 
@@ -77,12 +70,11 @@ class ProductSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_images(self, obj):
-        request = self.context.get('request') # ഇത് ചിലപ്പോൾ None ആകാം
+        request = self.context.get('request') 
         image_list = []
         
         # 1. Main Image (Legacy)
         if obj.image:
-            # Request ഉണ്ടെങ്കിൽ Full URL, ഇല്ലെങ്കിൽ Relative URL
             url = request.build_absolute_uri(obj.image.url) if request else obj.image.url
             image_list.append({"id": "main", "url": url})
 
@@ -107,10 +99,7 @@ class ProductSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Stock count cannot be negative.")
         return value
 
-
-# ==========================================
 #  3. CART & WISHLIST SERIALIZERS
-# ==========================================
 class CartItemSerializer(serializers.ModelSerializer):
     product = ProductSerializer(read_only=True)
     product_id = serializers.PrimaryKeyRelatedField(
@@ -131,10 +120,7 @@ class WishlistSerializer(serializers.ModelSerializer):
         model = Wishlist
         fields = ['id', 'product', 'product_id']
 
-
-# ==========================================
 #  4. ORDER SERIALIZERS
-# ==========================================
 class CancelledOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = CancelledOrder
@@ -150,7 +136,6 @@ class OrderItemSerializer(serializers.ModelSerializer):
         fields = ['product', 'product_name', 'product_image', 'quantity', 'price']
 
     def get_product_image(self, obj):
-        # ഉൽപ്പന്നം ഡിലീറ്റ് ആയാലും ക്രാഷ് ആകില്ല
         if not obj.product:
             return None
             
@@ -194,10 +179,7 @@ class AdminOrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = ['id', 'user_email', 'username', 'total_amount', 'status', 'created_at', 'shipping_details', 'items']
 
-
-# ==========================================
 #  5. ADDRESS & PASSWORD RESET
-# ==========================================
 class AddressSerializer(serializers.ModelSerializer):
     class Meta:
         model = Address
