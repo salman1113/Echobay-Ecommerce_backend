@@ -1,9 +1,10 @@
 from django.contrib import admin
+from .models import User, Product, ProductImage, Order, OrderItem, CartItem, Wishlist, CancelledOrder, Address
 
-# Register your models here.
-
-from django.contrib import admin
-from .models import User, Product, Order, OrderItem, CartItem, Wishlist, CancelledOrder, Address
+# ✅ 1. Product Image Inline (ഇത് പ്രോഡക്റ്റിന്റെ കൂടെ താഴെ ഇമേജ് ചേർക്കാൻ സഹായിക്കും)
+class ProductImageInline(admin.TabularInline):
+    model = ProductImage
+    extra = 1  # ഒരു സമയം ഒരു എക്സ്ട്രാ ബോക്സ് കാണിക്കും
 
 # Register the Custom User Model
 @admin.register(User)
@@ -18,6 +19,9 @@ class ProductAdmin(admin.ModelAdmin):
     list_display = ('name', 'category', 'price', 'count', 'is_active')
     list_filter = ('category', 'is_active')
     search_fields = ('name', 'description')
+    
+    # 👇 ഈ വരിയാണ് മൾട്ടിപ്പിൾ ഇമേജ് കാണിക്കുന്നത്
+    inlines = [ProductImageInline] 
 
 # Register the Order Model
 @admin.register(Order)
@@ -30,7 +34,7 @@ class OrderAdmin(admin.ModelAdmin):
 admin.site.register(CartItem)
 admin.site.register(Wishlist)
 admin.site.register(Address)
-
+# admin.site.register(ProductImage) # Inline കൊടുത്തത് കൊണ്ട് ഇത് വേണമെന്നില്ല
 
 @admin.register(CancelledOrder)
 class CancelledOrderAdmin(admin.ModelAdmin):
@@ -39,6 +43,6 @@ class CancelledOrderAdmin(admin.ModelAdmin):
 
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
-    list_display = ('id', 'order', 'product', 'quantity', 'price') # ടേബിളിൽ കാണിക്കേണ്ടവ
-    list_filter = ('order',) # ഫിൽറ്റർ ചെയ്യാൻ
-    search_fields = ('product__name', 'order__id') # സെർച്ച് ചെയ്യാൻ
+    list_display = ('id', 'order', 'product', 'quantity', 'price') 
+    list_filter = ('order',) 
+    search_fields = ('product__name', 'order__id')

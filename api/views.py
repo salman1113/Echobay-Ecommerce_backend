@@ -1,41 +1,44 @@
 import razorpay
 from django.conf import settings
-from django.shortcuts import render, get_object_or_404
-from rest_framework import generics, permissions, status, viewsets, filters
-from rest_framework.pagination import PageNumberPagination
-from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
+from rest_framework import viewsets, permissions, status, filters, generics
 from rest_framework.views import APIView
+from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
-from django.db.models import Q
-from django.contrib.auth import authenticate, login
+from rest_framework.pagination import PageNumberPagination
+from django.db.models import Sum, Count
+from django.contrib.auth import authenticate, login, get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly
 
-# Models & Serializers
-from .models import Product, CartItem, Wishlist, Order, OrderItem, Address, CancelledOrder 
-from .serializers import ( 
-    UserSerializer, 
-    ProductSerializer, 
-    CartItemSerializer, 
-    WishlistSerializer, 
-    OrderSerializer, 
-    CustomUserSerializer,
-    AddressSerializer
-)
-
-# Auth & Social Imports
-from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
-from allauth.socialaccount.providers.oauth2.client import OAuth2Client
-from dj_rest_auth.registration.views import SocialLoginView
-from rest_framework.permissions import AllowAny
-from django.contrib.auth import get_user_model
+# Email & Tokens
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_decode
 from django.core.mail import send_mail
 
-# 👇 RAZORPAY SETUP
+# Social Auth
+from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
+from allauth.socialaccount.providers.oauth2.client import OAuth2Client
+from dj_rest_auth.registration.views import SocialLoginView
+
+# Permissions
+from .permissions import IsAdminUser
+
+# Models & Serializers
+from .models import Product, ProductImage, CartItem, Wishlist, Order, OrderItem, Address, CancelledOrder 
+from .serializers import ( 
+    UserSerializer, ProductSerializer, CartItemSerializer, 
+    WishlistSerializer, OrderSerializer, CustomUserSerializer, AddressSerializer,
+    AdminUserSerializer, AdminOrderSerializer
+)
+
+User = get_user_model()
 client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
-# --- Password Reset ---
+# ==========================================
+#  AUTHENTICATION
+# ==========================================
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def custom_password_reset_confirm(request):
@@ -46,7 +49,6 @@ def custom_password_reset_confirm(request):
     if not (uidb64 and token and password):
         return Response({'detail': 'Missing data'}, status=status.HTTP_400_BAD_REQUEST)
 
-    User = get_user_model()
     try:
         uid = urlsafe_base64_decode(uidb64).decode()
         user = User.objects.get(pk=uid)
@@ -58,60 +60,42 @@ def custom_password_reset_confirm(request):
 
     user.set_password(password)
     user.save()
-
-    try:
-        send_mail(
-            subject='Password Reset Successful | EchoBay',
-            message=f'Hello {user.username},\n\nYour password has been successfully reset.',
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            fail_silently=True,
-        )
-    except Exception as e:
-        print(f"Failed to send success email: {e}")
-
     return Response({'detail': 'Password reset successful'}, status=status.HTTP_200_OK)
 
-
-# --- Authentication ---
 class RegisterView(generics.CreateAPIView):
+    queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.AllowAny]
 
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
-
     def post(self, request):
         username = request.data.get('username')
         password = request.data.get('password')
         user = authenticate(username=username, password=password)
-        
-        if user is not None:
+        if user:
             login(request, user)
             refresh = RefreshToken.for_user(user)
-            serializer = CustomUserSerializer(user)
-
             return Response({
                 'refresh': str(refresh),
                 'access': str(refresh.access_token),
-                'user': serializer.data
+                'user': CustomUserSerializer(user).data
             }, status=status.HTTP_200_OK)
-        else:
-            return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
 class GoogleLogin(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
     callback_url = "postmessage"
     client_class = OAuth2Client
-
     def get_response(self):
-        original_response = super().get_response()
-        my_user_serializer = CustomUserSerializer(self.user)
-        original_response.data['user'] = my_user_serializer.data
-        return original_response
+        resp = super().get_response()
+        resp.data['user'] = CustomUserSerializer(self.user).data
+        return Response
 
+# ==========================================
+#  PRODUCTS (Public & User View)
+# ==========================================
 
-# --- Products ---
 class ProductPagination(PageNumberPagination):
     page_size = 8
     page_size_query_param = 'page_size'
@@ -120,297 +104,297 @@ class ProductPagination(PageNumberPagination):
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all().order_by('-id') 
     serializer_class = ProductSerializer
-    permission_classes = [permissions.AllowAny] 
+    permission_classes = [IsAuthenticatedOrReadOnly] 
     pagination_class = ProductPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description', 'category'] 
     ordering_fields = ['price', 'created_at']
 
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAdminUser()]
+        return [AllowAny()]
+
     def get_queryset(self):
-        queryset = super().get_queryset()
+        qs = super().get_queryset()
         category = self.request.query_params.get('category')
         if category and category.lower() != 'all':
-            queryset = queryset.filter(category__iexact=category)
-        return queryset
+            qs = qs.filter(category__iexact=category)
+        return qs
 
+# ==========================================
+#  CART & WISHLIST & ADDRESS
+# ==========================================
 
-# --- Address Management ---
 class AddressViewSet(viewsets.ModelViewSet):
     serializer_class = AddressSerializer
     permission_classes = [permissions.IsAuthenticated]
-
     def get_queryset(self):
         return Address.objects.filter(user=self.request.user)
-
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+# ==========================================
+#  CART & WISHLIST & ADDRESS
+# ==========================================
 
-# --- Cart ---
+# ... AddressViewSet പഴയത് പോലെ നിൽക്കട്ടെ ...
+
 class CartView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-
     def get(self, request):
-        cart_items = CartItem.objects.filter(user=request.user)
-        serializer = CartItemSerializer(cart_items, many=True)
+        # 👇 CHANGE HERE: context={'request': request} ചേർത്തു
+        serializer = CartItemSerializer(CartItem.objects.filter(user=request.user), many=True, context={'request': request})
         return Response(serializer.data)
 
     def post(self, request):
-        product_id = request.data.get('product_id')
-        qty_to_add = int(request.data.get('quantity', 1))
-        MAX_QTY_PER_USER = 5  # ✅ Max Limit Logic
-
+        pid = request.data.get('product_id')
+        qty = int(request.data.get('quantity', 1))
         try:
-            product = Product.objects.get(id=product_id)
-
-            # 🛑 Stock & Limit Checks
-            if product.count <= 0:
-                return Response({'error': 'Out of stock'}, status=status.HTTP_400_BAD_REQUEST)
-            if product.count < qty_to_add:
-                return Response({'error': f'Only {product.count} items left!'}, status=status.HTTP_400_BAD_REQUEST)
-
-            cart_item, created = CartItem.objects.get_or_create(user=request.user, product=product)
-
-            current_qty = cart_item.quantity if not created else 0
-            new_total_qty = current_qty + qty_to_add
+            prod = Product.objects.get(id=pid)
+            if prod.count < qty: return Response({'error': 'Out of stock'}, 400)
             
-            if new_total_qty > MAX_QTY_PER_USER:
-                return Response({'error': f'Limit exceeded! Max {MAX_QTY_PER_USER} units allowed per person.'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            if new_total_qty > product.count:
-                 return Response({'error': f'Not enough stock available.'}, status=status.HTTP_400_BAD_REQUEST)
-
-            if not created:
-                cart_item.quantity = new_total_qty
-            else:
-                cart_item.quantity = qty_to_add
-            
-            cart_item.save()
-            return Response({'message': 'Added to cart'}, status=status.HTTP_200_OK)
-
+            item, created = CartItem.objects.get_or_create(user=request.user, product=prod)
+            item.quantity = qty if created else item.quantity + qty
+            if item.quantity > 5: return Response({'error': 'Limit exceeded'}, 400)
+            item.save()
+            return Response({'message': 'Added to cart'})
         except Product.DoesNotExist:
-            return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
-            
+            return Response({'error': 'Product not found'}, 404)
     def delete(self, request, pk):
         CartItem.objects.filter(user=request.user, id=pk).delete()
-        return Response({'message': 'Removed'}, status=status.HTTP_200_OK)
+        return Response({'message': 'Removed'})
 
-
-# --- Wishlist ---
 class WishlistView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-
     def get(self, request):
-        items = Wishlist.objects.filter(user=request.user)
-        serializer = WishlistSerializer(items, many=True)
+        # 👇 CHANGE HERE: context={'request': request} ചേർത്തു
+        serializer = WishlistSerializer(Wishlist.objects.filter(user=request.user), many=True, context={'request': request})
         return Response(serializer.data)
 
     def post(self, request):
-        product_id = request.data.get('product_id')
         try:
-            product = Product.objects.get(id=product_id)
-            Wishlist.objects.get_or_create(user=request.user, product=product)
-            return Response({'message': 'Added to wishlist'})
-        except Product.DoesNotExist:
-            return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
-
+            prod = Product.objects.get(id=request.data.get('product_id'))
+            Wishlist.objects.get_or_create(user=request.user, product=prod)
+            return Response({'message': 'Added'})
+        except Product.DoesNotExist: return Response({'error': 'Product not found'}, 404)
     def delete(self, request, pk):
         Wishlist.objects.filter(user=request.user, id=pk).delete()
         return Response({'message': 'Removed'})
+# ==========================================
+#  USER ORDER MANAGEMENT
+# ==========================================
 
+class OrderViewSet(viewsets.ModelViewSet):
+    serializer_class = OrderSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = ProductPagination 
 
-# --- 💰 PAYMENT VIEWS (Razorpay) ---
+    def get_queryset(self):
+        if self.request.user.is_superuser:
+            return Order.objects.all().order_by('-created_at')
+        return Order.objects.filter(user=self.request.user).order_by('-created_at')
 
-# 1. Create Order in Razorpay
-class CreatePaymentView(APIView):
+class OrderCheckoutView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        total_amount = request.data.get('total_amount')
+        shipping = request.data.get('shipping_details') 
+        total = request.data.get('total_amount')
+        method = request.data.get('payment_method', 'cod')
+        
+        if not shipping or not total: return Response({'error': 'Missing details'}, 400)
+        
+        cart = CartItem.objects.filter(user=request.user)
+        if not cart.exists(): return Response({'error': 'Cart empty'}, 400)
+
         try:
-            # Convert to paise
-            amount_in_paise = int(float(total_amount) * 100)
+            status_val = 'processing' if method == 'cod' else 'pending_payment'
+            order = Order.objects.create(
+                user=request.user, total_amount=total, 
+                shipping_details=shipping, payment_method=method, status=status_val
+            )
+            for item in cart:
+                OrderItem.objects.create(order=order, product=item.product, quantity=item.quantity, price=item.product.price)
+                if item.product.count >= item.quantity:
+                    item.product.count -= item.quantity
+                    item.product.save()
+            cart.delete()
+            return Response({'message': 'Success', 'order_id': order.id, 'status': status_val}, 201)
+        except Exception as e: return Response({'error': str(e)}, 500)
+
+class CancelOrderView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def post(self, request, pk):
+        try:
+            order = Order.objects.get(id=pk) if request.user.is_superuser else Order.objects.get(id=pk, user=request.user)
+            if order.status in ['delivered', 'cancelled']: return Response({'error': 'Cannot cancel'}, 400)
+            order.status = 'cancelled'
+            order.save()
             
-            razorpay_order = client.order.create({
-                "amount": amount_in_paise,
-                "currency": "INR",
-                "payment_capture": "1"
-            })
+            CancelledOrder.objects.create(order=order, cancelled_by=request.user, reason=request.data.get('reason', 'User request'))
+            for item in order.items.all():
+                item.product.count += item.quantity
+                item.product.save()
+            return Response({'message': 'Cancelled'}, 200)
+        except Order.DoesNotExist: return Response({'error': 'Not found'}, 404)
+
+class RetryPaymentView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def post(self, request, pk):
+        try:
+            order = Order.objects.get(id=pk, user=request.user)
+            if order.status != 'pending_payment': return Response({'error': 'Not pending'}, 400)
+            
+            amt = int(float(order.total_amount) * 100)
+            rzp_order = client.order.create({"amount": amt, "currency": "INR", "payment_capture": "1"})
             
             return Response({
-                'razorpay_order_id': razorpay_order['id'],
-                'amount': amount_in_paise,
-                'currency': 'INR',
-                'key_id': settings.RAZORPAY_KEY_ID
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                'razorpay_order_id': rzp_order['id'], 'amount': amt, 
+                'currency': 'INR', 'key_id': settings.RAZORPAY_KEY_ID, 'order_id': order.id
+            }, 200)
+        except Exception as e: return Response({'error': str(e)}, 500)
 
-# 2. Verify Payment & Update Order
+class CreatePaymentView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def post(self, request):
+        try:
+            amt = int(float(request.data.get('total_amount')) * 100)
+            order = client.order.create({"amount": amt, "currency": "INR", "payment_capture": "1"})
+            return Response({'razorpay_order_id': order['id'], 'amount': amt, 'currency': 'INR', 'key_id': settings.RAZORPAY_KEY_ID}, 200)
+        except Exception as e: return Response({'error': str(e)}, 500)
+
 class VerifyPaymentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-
     def post(self, request):
         try:
             data = request.data
-            
-            # Verify Signature
             client.utility.verify_payment_signature({
                 'razorpay_order_id': data['razorpay_order_id'],
                 'razorpay_payment_id': data['razorpay_payment_id'],
                 'razorpay_signature': data['razorpay_signature']
             })
+            if data.get('order_id'):
+                Order.objects.filter(id=data['order_id']).update(status='processing', razorpay_payment_id=data['razorpay_payment_id'])
+            return Response({'message': 'Verified'}, 200)
+        except Exception as e: return Response({'error': str(e)}, 400)
 
-            # Update Order Status
-            order_id = data.get('order_id')
-            if order_id:
-                order = Order.objects.get(id=order_id)
-                order.status = 'processing' # ✅ Payment Success
-                order.razorpay_payment_id = data['razorpay_payment_id']
-                order.save()
+# ==========================================
+#  ADMIN PANEL (✅ UPDATED FOR LINKS & UPLOADS)
+# ==========================================
 
-            return Response({'message': 'Payment Successful'}, status=status.HTTP_200_OK)
+class AdminProductViewSet(viewsets.ModelViewSet):
+    queryset = Product.objects.all().order_by('-id')
+    serializer_class = ProductSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name', 'category']
 
-        except razorpay.errors.SignatureVerificationError:
-            return Response({'error': 'Payment Verification Failed'}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    def get_queryset(self):
+        qs = super().get_queryset()
+        category = self.request.query_params.get('category')
+        if category and category != 'All':
+            qs = qs.filter(category__iexact=category)
+        return qs
 
+    # ✅ CREATE: Handles Files AND Links
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        product = serializer.save()
 
-# 3. 👇 NEW: Retry Payment View (For Pending Orders)
-class RetryPaymentView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+        # 1. Handle File Uploads
+        images = request.FILES.getlist('uploaded_images')
+        for img in images:
+            ProductImage.objects.create(product=product, image=img)
+        
+        # 2. Handle External URLs (Paste Link)
+        image_urls = request.POST.getlist('image_urls')
+        for url in image_urls:
+            if url.strip(): # Check if not empty
+                ProductImage.objects.create(product=product, external_url=url)
+        
+        # 3. Handle Main Image (Legacy)
+        if 'image' in request.FILES:
+            product.image = request.FILES['image']
+            product.save()
 
-    def post(self, request, pk):
-        try:
-            # ഓർഡർ കണ്ടുപിടിക്കുന്നു
-            order = Order.objects.get(id=pk, user=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-            # സ്റ്റാറ്റസ് Pending Payment അല്ലെങ്കിൽ റിജക്ട് ചെയ്യുക
-            if order.status != 'pending_payment':
-                return Response({'error': 'This order is not pending payment'}, status=status.HTTP_400_BAD_REQUEST)
+    # ✅ UPDATE: Handles Files AND Links
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
 
-            # Razorpay-യിൽ പുതിയ ഓർഡർ ഐഡി ഉണ്ടാക്കുന്നു
-            amount_in_paise = int(float(order.total_amount) * 100)
-            
-            razorpay_order = client.order.create({
-                "amount": amount_in_paise,
-                "currency": "INR",
-                "payment_capture": "1"
-            })
+        # 1. Delete Removed Images (Pazhaya images kalayan)
+        deleted_ids = request.POST.getlist('deleted_image_ids')
+        for img_id in deleted_ids:
+            if img_id == "main":
+                instance.image = None
+                instance.save()
+            elif img_id.isdigit():
+                ProductImage.objects.filter(id=img_id, product=instance).delete()
 
-            return Response({
-                'razorpay_order_id': razorpay_order['id'],
-                'amount': amount_in_paise,
-                'currency': 'INR',
-                'key_id': settings.RAZORPAY_KEY_ID,
-                'order_id': order.id
-            }, status=status.HTTP_200_OK)
+        # 2. Add New Uploads
+        images = request.FILES.getlist('uploaded_images')
+        for img in images:
+            ProductImage.objects.create(product=instance, image=img)
 
-        except Order.DoesNotExist:
-            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # 3. Add New Links
+        image_urls = request.POST.getlist('image_urls')
+        for url in image_urls:
+            if url.strip():
+                ProductImage.objects.create(product=instance, external_url=url)
 
+        # 4. Main Image Update (Optional)
+        if 'image' in request.FILES:
+            instance.image = request.FILES['image']
+            instance.save()
 
-# --- Orders & Checkout ---
-class OrderView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+        return Response(serializer.data)
+
+class AdminUserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all().order_by('-date_joined')
+    serializer_class = AdminUserSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['username', 'email']
+
+class AdminOrderViewSet(viewsets.ModelViewSet):
+    serializer_class = AdminOrderSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+
+    def get_queryset(self):
+        queryset = Order.objects.all().order_by('-created_at')
+        user_id = self.request.query_params.get('user') 
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+        return queryset
+    
+# 4. Admin Dashboard Analytics
+class AdminDashboardStatsView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
 
     def get(self, request):
-        orders = Order.objects.filter(user=request.user).order_by('-created_at')
-        paginator = ProductPagination()
-        result_page = paginator.paginate_queryset(orders, request)
-        serializer = OrderSerializer(result_page, many=True)
-        return paginator.get_paginated_response(serializer.data)
+        total_products_sold = OrderItem.objects.filter(
+            order__status__in=['processing', 'shipped', 'delivered']
+        ).aggregate(total=Sum('quantity'))['total'] or 0
 
-    def post(self, request):
-        shipping = request.data.get('shipping_details') 
-        total = request.data.get('total_amount')
-        payment_method = request.data.get('payment_method', 'cod')
-        
-        if not shipping or not total:
-             return Response({'error': 'Missing shipping details or total amount'}, status=status.HTTP_400_BAD_REQUEST)
+        total_revenue = Order.objects.exclude(
+            status='cancelled'
+        ).aggregate(total=Sum('total_amount'))['total'] or 0
 
-        cart_items = CartItem.objects.filter(user=request.user)
-        if not cart_items.exists():
-             return Response({'error': 'Cart is empty'}, status=status.HTTP_400_BAD_REQUEST)
+        # 👇 മാറ്റം ഇവിടെയാണ്: അഡ്മിൻ അല്ലാത്തവരെ (is_superuser=False) മാത്രം എണ്ണുന്നു
+        total_customers = User.objects.filter(is_superuser=False).count()
 
-        try:
-            # ✅ Determine Status based on Payment Method
-            initial_status = 'processing' if payment_method == 'cod' else 'pending_payment'
-
-            # Create Order
-            order = Order.objects.create(
-                user=request.user,
-                total_amount=total,
-                shipping_details=shipping,
-                payment_method=payment_method,
-                status=initial_status
-            )
-
-            # Move Items
-            for item in cart_items:
-                OrderItem.objects.create(
-                    order=order,
-                    product=item.product,
-                    quantity=item.quantity,
-                    price=item.product.price
-                )
-                
-                # Decrease Stock
-                if item.product.count >= item.quantity:
-                    item.product.count -= item.quantity
-                    item.product.save()
-
-            # Clear Cart
-            cart_items.delete()
-
-            return Response({
-                'message': 'Order placed successfully', 
-                'order_id': order.id,
-                'status': initial_status
-            }, status=status.HTTP_201_CREATED)
-        
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-# 👇 UPDATED: Cancel Order View (With Database Tracking)
-class CancelOrderView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request, pk):
-        try:
-            # ലോഗിൻ ചെയ്ത യൂസറുടെ ഓർഡർ ആണോ എന്ന് ഉറപ്പുവരുത്തുന്നു
-            order = Order.objects.get(id=pk, user=request.user)
-            
-            # ഡെലിവറി കഴിഞ്ഞാൽ ക്യാൻസൽ ചെയ്യാൻ പാടില്ല
-            if order.status == 'delivered':
-                return Response({'error': 'Cannot cancel delivered order'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            if order.status == 'cancelled':
-                return Response({'error': 'Order is already cancelled'}, status=status.HTTP_400_BAD_REQUEST)
-
-            # 1. സ്റ്റാറ്റസ് മാറ്റുന്നു
-            order.status = 'cancelled'
-            order.save()
-            
-            # 2. 👇 പുതിയ ടേബിളിൽ റെക്കോർഡ് ഇടുന്നു
-            CancelledOrder.objects.create(
-                order=order,
-                cancelled_by=request.user,
-                reason=request.data.get('reason', 'User cancelled from dashboard') 
-            )
-
-            # 3. സ്റ്റോക്ക് തിരിച്ചിടുന്നു (Restock)
-            # ഓർഡർ ക്യാൻസൽ ചെയ്താൽ ആ സാധനങ്ങൾ തിരിച്ച് സ്റ്റോക്കിൽ കയറണം.
-            for item in order.items.all():
-                item.product.count += item.quantity
-                item.product.save()
-
-            return Response({'message': 'Order cancelled successfully and restocked'}, status=status.HTTP_200_OK)
-        
-        except Order.DoesNotExist:
-            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+        data = {
+            "total_users": total_customers, # Now strictly Customers
+            "total_products": Product.objects.count(),
+            "total_orders": Order.objects.count(),
+            "products_sold": total_products_sold,
+            "total_revenue": total_revenue,
+        }
+        return Response(data)

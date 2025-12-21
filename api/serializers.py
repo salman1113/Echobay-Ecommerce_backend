@@ -1,35 +1,35 @@
 from rest_framework import serializers
-from .models import User, Product, CartItem, Wishlist, Order, OrderItem, Address, CancelledOrder 
+from django.contrib.auth import get_user_model
+from .models import Product, ProductImage, CartItem, Wishlist, Order, OrderItem, Address, CancelledOrder 
 
 # --- NEW IMPORTS FOR GOOGLE AUTH ---
 from dj_rest_auth.serializers import UserDetailsSerializer
 from allauth.socialaccount.models import SocialAccount
-
 from dj_rest_auth.serializers import PasswordResetSerializer
 from django.conf import settings
 from django.contrib.auth.forms import PasswordResetForm
 
-# 1. Custom User Serializer (Fixed logic)
+User = get_user_model()
+
+# ==========================================
+#  1. USER SERIALIZERS
+# ==========================================
 class CustomUserSerializer(UserDetailsSerializer):
     image = serializers.SerializerMethodField()
     name = serializers.SerializerMethodField()
 
     class Meta(UserDetailsSerializer.Meta):
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'name', 'image', 'role')
-        read_only_fields = ('email', 'role')
+        model = User
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'name', 'image', 'role', 'is_superuser', 'is_active', 'date_joined')
+        read_only_fields = ('email', 'role', 'is_superuser', 'date_joined')
 
     def get_image(self, user):
         try:
             google_account = SocialAccount.objects.get(user=user, provider='google')
-            url = google_account.extra_data.get('picture') # ✅ URL വേരിയബിളിലേക്ക് മാറ്റുന്നു
-            
-            if url:
-                # http ഉണ്ടെങ്കിൽ അത് മാറ്റി https ആക്കുന്നു
-                if url.startswith('http://'):
-                    url = url.replace('http://', 'https://')
-            
-            return url # ✅ അവസാനം റിട്ടേൺ ചെയ്യുന്നു
-            
+            url = google_account.extra_data.get('picture')
+            if url and url.startswith('http://'):
+                url = url.replace('http://', 'https://')
+            return url
         except SocialAccount.DoesNotExist:
             return None
 
@@ -37,7 +37,6 @@ class CustomUserSerializer(UserDetailsSerializer):
         full_name = f"{user.first_name} {user.last_name}".strip()
         return full_name if full_name else user.username
 
-# 2. User Serializer
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
 
@@ -54,13 +53,64 @@ class UserSerializer(serializers.ModelSerializer):
         )
         return user
 
-# 3. Product Serializer
+class AdminUserSerializer(serializers.ModelSerializer):
+    order_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        # 👇 'is_superuser' ഇവിടെ ചേർത്തിട്ടുണ്ട്. ഇനി ഫ്രണ്ടെൻഡിൽ അഡ്മിനെ തിരിച്ചറിയാം.
+        fields = ['id', 'username', 'email', 'date_joined', 'is_active', 'order_count', 'is_superuser']
+
+    def get_order_count(self, user):
+        return Order.objects.filter(user=user).count()
+
+
+# ==========================================
+#  2. PRODUCT SERIALIZER (✅ UPDATED LOGIC)
+# ==========================================
+
 class ProductSerializer(serializers.ModelSerializer):
+    images = serializers.SerializerMethodField()
+
     class Meta:
         model = Product
         fields = '__all__'
 
-# 4. Cart Serializer
+    def get_images(self, obj):
+        request = self.context.get('request') # ഇത് ചിലപ്പോൾ None ആകാം
+        image_list = []
+        
+        # 1. Main Image (Legacy)
+        if obj.image:
+            # Request ഉണ്ടെങ്കിൽ Full URL, ഇല്ലെങ്കിൽ Relative URL
+            url = request.build_absolute_uri(obj.image.url) if request else obj.image.url
+            image_list.append({"id": "main", "url": url})
+
+        # 2. Gallery Images
+        for img in obj.images.all():
+            if img.image:
+                url = request.build_absolute_uri(img.image.url) if request else img.image.url
+            else:
+                url = img.external_url
+            
+            image_list.append({"id": img.id, "url": url})
+                
+        return image_list
+
+    def validate_price(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Price must be greater than 0.")
+        return value
+
+    def validate_count(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Stock count cannot be negative.")
+        return value
+
+
+# ==========================================
+#  3. CART & WISHLIST SERIALIZERS
+# ==========================================
 class CartItemSerializer(serializers.ModelSerializer):
     product = ProductSerializer(read_only=True)
     product_id = serializers.PrimaryKeyRelatedField(
@@ -71,7 +121,6 @@ class CartItemSerializer(serializers.ModelSerializer):
         model = CartItem
         fields = ['id', 'product', 'product_id', 'quantity']
 
-# 5. Wishlist Serializer
 class WishlistSerializer(serializers.ModelSerializer):
     product = ProductSerializer(read_only=True)
     product_id = serializers.PrimaryKeyRelatedField(
@@ -82,8 +131,10 @@ class WishlistSerializer(serializers.ModelSerializer):
         model = Wishlist
         fields = ['id', 'product', 'product_id']
 
-# 6. Order Serializers
 
+# ==========================================
+#  4. ORDER SERIALIZERS
+# ==========================================
 class CancelledOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = CancelledOrder
@@ -91,27 +142,68 @@ class CancelledOrderSerializer(serializers.ModelSerializer):
 
 class OrderItemSerializer(serializers.ModelSerializer):
     product = ProductSerializer(read_only=True)
+    product_name = serializers.ReadOnlyField(source='product.name')
+    product_image = serializers.SerializerMethodField()
+    
     class Meta:
         model = OrderItem
-        fields = ['product', 'quantity', 'price']
+        fields = ['product', 'product_name', 'product_image', 'quantity', 'price']
+
+    def get_product_image(self, obj):
+        # ഉൽപ്പന്നം ഡിലീറ്റ് ആയാലും ക്രാഷ് ആകില്ല
+        if not obj.product:
+            return None
+            
+        try:
+            request = self.context.get('request')
+            
+            # Priority 1: Main Image (Legacy)
+            if obj.product.image:
+                return request.build_absolute_uri(obj.product.image.url) if request else obj.product.image.url
+            
+            # Priority 2: Gallery Image (First one)
+            first_gallery_img = obj.product.images.first()
+            if first_gallery_img:
+                if first_gallery_img.image:
+                    return request.build_absolute_uri(first_gallery_img.image.url) if request else first_gallery_img.image.url
+                elif first_gallery_img.external_url:
+                    return first_gallery_img.external_url
+            
+            return None
+        except Exception as e:
+            return None
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
-    cancellation_details = CancelledOrderSerializer(read_only=True) 
+    cancellation_details = CancelledOrderSerializer(read_only=True)
+    user = CustomUserSerializer(read_only=True) 
     
     class Meta:
         model = Order
-        fields = ['id', 'total_amount', 'status', 'created_at', 'shipping_details', 'items', 'payment_method', 'cancellation_details']
+        fields = [
+            'id', 'user', 'total_amount', 'status', 'created_at', 
+            'shipping_details', 'items', 'payment_method', 'cancellation_details'
+        ]
+
+class AdminOrderSerializer(serializers.ModelSerializer):
+    items = OrderItemSerializer(many=True, read_only=True)
+    user_email = serializers.ReadOnlyField(source='user.email')
+    username = serializers.ReadOnlyField(source='user.username')
+
+    class Meta:
+        model = Order
+        fields = ['id', 'user_email', 'username', 'total_amount', 'status', 'created_at', 'shipping_details', 'items']
 
 
-# 7. Address Serializer
+# ==========================================
+#  5. ADDRESS & PASSWORD RESET
+# ==========================================
 class AddressSerializer(serializers.ModelSerializer):
     class Meta:
         model = Address
         fields = ['id', 'name', 'phone', 'street', 'city', 'state', 'zip_code', 'is_default']
         read_only_fields = ['user']
 
-# 8. Password Reset Serializer
 class CustomPasswordResetSerializer(PasswordResetSerializer):
     def get_email_options(self):
         return {
