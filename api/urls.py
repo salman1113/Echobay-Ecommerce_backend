@@ -11,7 +11,11 @@ from .views import (
     AdminProductViewSet, 
     AdminUserViewSet, 
     AdminOrderViewSet, 
-    AdminDashboardStatsView
+    AdminDashboardStatsView,
+    SendNotificationView,
+    NotificationListView,
+    MarkNotificationReadView,
+    UserListView,
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 from .serializers import CustomPasswordResetSerializer
@@ -63,4 +67,11 @@ urlpatterns = [
 
     # Router Includes
     path('', include(router.urls)), 
+
+
+    path('notifications/send/', SendNotificationView.as_view(), name='send-notification'),
+    path('notifications/', NotificationListView.as_view(), name='my-notifications'),
+    path('notifications/<int:pk>/read/', MarkNotificationReadView.as_view(), name='read-notification'),
+
+    path('users/', UserListView.as_view(), name='user-list'),
 ]

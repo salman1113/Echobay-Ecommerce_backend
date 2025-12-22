@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Product, ProductImage, CartItem, Wishlist, Order, OrderItem, Address, CancelledOrder 
+from .models import Product, ProductImage, CartItem, Wishlist, Order, OrderItem, Address, CancelledOrder, Notification
 
 from dj_rest_auth.serializers import UserDetailsSerializer
 from allauth.socialaccount.models import SocialAccount
@@ -47,6 +47,13 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'password', 'role']
+        extra_kwargs = {'email': {'required': True}}
+
+    def validate_email(self, value):
+        lower_email = value.lower()
+        if User.objects.filter(email__iexact=lower_email).exists():
+            raise serializers.ValidationError("This email is already registered.")
+        return lower_email
 
     def create(self, validated_data):
         user = User.objects.create_user(
@@ -234,3 +241,9 @@ class CustomPasswordResetSerializer(PasswordResetSerializer):
         self.reset_form = PasswordResetForm(data=self.initial_data)
         if self.reset_form.is_valid():
             self.reset_form.save(**opts)
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = '__all__'

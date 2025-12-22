@@ -25,11 +25,11 @@ from dj_rest_auth.registration.views import SocialLoginView
 from .permissions import IsAdminUser
 
 # Models & Serializers
-from .models import Product, ProductImage, CartItem, Wishlist, Order, OrderItem, Address, CancelledOrder 
+from .models import Product, ProductImage, CartItem, Wishlist, Order, OrderItem, Address, CancelledOrder, Notification
 from .serializers import ( 
     UserSerializer, ProductSerializer, CartItemSerializer, 
     WishlistSerializer, OrderSerializer, CustomUserSerializer, AddressSerializer,
-    AdminUserSerializer, AdminOrderSerializer
+    AdminUserSerializer, AdminOrderSerializer, NotificationSerializer
 )
 
 User = get_user_model()
@@ -381,3 +381,54 @@ class AdminDashboardStatsView(APIView):
             "total_revenue": total_revenue,
         }
         return Response(data)
+    
+class SendNotificationView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+
+    def post(self, request):
+        recipient_id = request.data.get('user_id') # "all" or ID
+        title = request.data.get('title')
+        message = request.data.get('message')
+
+        if not title or not message:
+            return Response({'error': 'Title and Message required'}, status=400)
+
+        if recipient_id == "all":
+            # എല്ലാ സാധാരണ യൂസർമാർക്കും അയക്കുന്നു (Admin ഒഴികെ)
+            users = User.objects.filter(is_superuser=False)
+            notifications = [
+                Notification(recipient=user, title=title, message=message)
+                for user in users
+            ]
+            Notification.objects.bulk_create(notifications)
+            return Response({'message': f'Sent to {len(notifications)} users'})
+        
+        else:
+            # ഒരൊറ്റ യൂസർക്ക് അയക്കുന്നു
+            try:
+                user = User.objects.get(id=recipient_id)
+                Notification.objects.create(recipient=user, title=title, message=message)
+                return Response({'message': f'Sent to {user.username}'})
+            except User.DoesNotExist:
+                return Response({'error': 'User not found'}, 404)
+
+# 2. നോട്ടിഫിക്കേഷൻ കാണാനുള്ള View (For User & Admin)
+class NotificationListView(generics.ListAPIView):
+    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Notification.objects.filter(recipient=self.request.user).order_by('-created_at')
+
+# 3. Mark as Read
+class MarkNotificationReadView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def post(self, request, pk):
+        Notification.objects.filter(id=pk, recipient=request.user).update(is_read=True)
+        return Response({'message': 'Marked as read'})
+    
+
+class UserListView(generics.ListAPIView):
+    permission_classes = [permissions.IsAdminUser] # അഡ്മിന് മാത്രമേ കാണാൻ പറ്റൂ
+    serializer_class = UserSerializer # നിലവിലുള്ള UserSerializer ഉപയോഗിക്കാം
+    queryset = User.objects.filter(is_superuser=False) # അഡ്മിൻ അല്ലാത്തവരെ മാത്രം കാണിക്കും
