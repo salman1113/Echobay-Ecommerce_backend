@@ -244,12 +244,35 @@ class RetryPaymentView(APIView):
 
 class CreatePaymentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+
     def post(self, request):
         try:
-            amt = int(float(request.data.get('total_amount')) * 100)
-            order = client.order.create({"amount": amt, "currency": "INR", "payment_capture": "1"})
-            return Response({'razorpay_order_id': order['id'], 'amount': amt, 'currency': 'INR', 'key_id': settings.RAZORPAY_KEY_ID}, 200)
-        except Exception as e: return Response({'error': str(e)}, 500)
+            amount = request.data.get('amount') or request.data.get('total_amount')
+
+            # 1. Validation
+            if not amount:
+                return Response({'error': 'Amount is required'}, status=400)
+
+            # 2. Conversion (Rupees to Paise)
+            amt = int(float(amount) * 100)
+
+            # 3. Create Order via Razorpay Client
+            order = client.order.create({
+                "amount": amt, 
+                "currency": "INR", 
+                "payment_capture": "1"
+            })
+
+            return Response({
+                'id': order['id'],         
+                'razorpay_order_id': order['id'], 
+                'amount': amt, 
+                'currency': 'INR', 
+                'key_id': settings.RAZORPAY_KEY_ID
+            }, status=200)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
 
 class VerifyPaymentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
