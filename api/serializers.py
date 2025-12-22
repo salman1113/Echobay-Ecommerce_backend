@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-# 👇 Change 1: ProductImage ഇംപോർട്ട് ചെയ്തു
 from .models import Product, ProductImage, CartItem, Wishlist, Order, OrderItem, Address, CancelledOrder 
 
 from dj_rest_auth.serializers import UserDetailsSerializer
@@ -89,9 +88,6 @@ class ProductSerializer(serializers.ModelSerializer):
                 url = request.build_absolute_uri(obj.image.url) if request else obj.image.url
                 image_list.append({"id": "main", "url": url})
             except: pass
-
-        # 2. Gallery Images (Safe Fetching Added Here too)
-        # 👇 Change: Product Page Crash ആകാതിരിക്കാൻ ഇവിടെയും Safe check ഇട്ടു
         images = getattr(obj, 'images', None) or getattr(obj, 'productimage_set', None)
         
         if images:
@@ -162,13 +158,11 @@ class OrderItemSerializer(serializers.ModelSerializer):
         image_url = None
         request = self.context.get('request')
 
-        # 1. Main Image ഉണ്ടോ എന്ന് നോക്കുന്നു
         if obj.product.image:
             try:
                 image_url = obj.product.image.url
             except: pass
         
-        # 2. Main Image ഇല്ലെങ്കിൽ Gallery-യിൽ നോക്കുന്നു
         if not image_url:
             images = getattr(obj.product, 'images', None) or getattr(obj.product, 'productimage_set', None)
             if images and images.exists():
@@ -178,13 +172,11 @@ class OrderItemSerializer(serializers.ModelSerializer):
                         image_url = first_img.image.url
                     except: pass
                 elif first_img.external_url:
-                    return first_img.external_url # External URL ആണെങ്കിൽ നേരിട്ട് കൊടുക്കാം
+                    return first_img.external_url 
 
-        # 3. URL കിട്ടിയെങ്കിൽ അത് Full URL ആക്കി മാറ്റുന്നു
         if image_url:
             if request:
                 return request.build_absolute_uri(image_url)
-            # Request ഇല്ലെങ്കിൽ നമ്മൾ മാനുവലായി ലോക്കൽഹോസ്റ്റ് ചേർക്കുന്നു (Fallback)
             return f"http://127.0.0.1:8000{image_url}"
 
         return None
