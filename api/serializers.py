@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Product, CartItem, Wishlist, Order, OrderItem, Address, CancelledOrder 
+# 👇 Change 1: ProductImage ഇംപോർട്ട് ചെയ്തു
+from .models import Product, ProductImage, CartItem, Wishlist, Order, OrderItem, Address, CancelledOrder 
 
 from dj_rest_auth.serializers import UserDetailsSerializer
 from allauth.socialaccount.models import SocialAccount
@@ -10,7 +11,9 @@ from django.contrib.auth.forms import PasswordResetForm
 
 User = get_user_model()
 
+# ==========================================
 #  1. USER SERIALIZERS
+# ==========================================
 class CustomUserSerializer(UserDetailsSerializer):
     image = serializers.SerializerMethodField()
     name = serializers.SerializerMethodField()
@@ -24,6 +27,11 @@ class CustomUserSerializer(UserDetailsSerializer):
         try:
             google_account = SocialAccount.objects.get(user=user, provider='google')
             url = google_account.extra_data.get('picture')
+            
+            # Google Loop fix
+            if url and ('googleusercontent.com/profile/picture' in url or '/0' in url):
+                return None 
+
             if url and url.startswith('http://'):
                 url = url.replace('http://', 'https://')
             return url
@@ -61,7 +69,9 @@ class AdminUserSerializer(serializers.ModelSerializer):
         return Order.objects.filter(user=user).count()
 
 
-#  2. PRODUCT SERIALIZER
+# ==========================================
+#  2. PRODUCT SERIALIZER (✅ FIXED)
+# ==========================================
 class ProductSerializer(serializers.ModelSerializer):
     images = serializers.SerializerMethodField()
 
@@ -73,33 +83,41 @@ class ProductSerializer(serializers.ModelSerializer):
         request = self.context.get('request') 
         image_list = []
         
-        # 1. Main Image (Legacy)
+        # 1. Main Image
         if obj.image:
-            url = request.build_absolute_uri(obj.image.url) if request else obj.image.url
-            image_list.append({"id": "main", "url": url})
+            try:
+                url = request.build_absolute_uri(obj.image.url) if request else obj.image.url
+                image_list.append({"id": "main", "url": url})
+            except: pass
 
-        # 2. Gallery Images
-        for img in obj.images.all():
-            if img.image:
-                url = request.build_absolute_uri(img.image.url) if request else img.image.url
-            else:
-                url = img.external_url
-            
-            image_list.append({"id": img.id, "url": url})
+        # 2. Gallery Images (Safe Fetching Added Here too)
+        # 👇 Change: Product Page Crash ആകാതിരിക്കാൻ ഇവിടെയും Safe check ഇട്ടു
+        images = getattr(obj, 'images', None) or getattr(obj, 'productimage_set', None)
+        
+        if images:
+            for img in images.all():
+                if img.image:
+                    try:
+                        url = request.build_absolute_uri(img.image.url) if request else img.image.url
+                        image_list.append({"id": img.id, "url": url})
+                    except: pass
+                else:
+                    image_list.append({"id": img.id, "url": img.external_url})
                 
         return image_list
 
     def validate_price(self, value):
-        if value <= 0:
-            raise serializers.ValidationError("Price must be greater than 0.")
+        if value <= 0: raise serializers.ValidationError("Price must be greater than 0.")
         return value
 
     def validate_count(self, value):
-        if value < 0:
-            raise serializers.ValidationError("Stock count cannot be negative.")
+        if value < 0: raise serializers.ValidationError("Stock count cannot be negative.")
         return value
 
+
+# ==========================================
 #  3. CART & WISHLIST SERIALIZERS
+# ==========================================
 class CartItemSerializer(serializers.ModelSerializer):
     product = ProductSerializer(read_only=True)
     product_id = serializers.PrimaryKeyRelatedField(
@@ -120,7 +138,10 @@ class WishlistSerializer(serializers.ModelSerializer):
         model = Wishlist
         fields = ['id', 'product', 'product_id']
 
-#  4. ORDER SERIALIZERS
+
+# ==========================================
+#  4. ORDER SERIALIZERS (✅ FIXED)
+# ==========================================
 class CancelledOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = CancelledOrder
@@ -136,28 +157,38 @@ class OrderItemSerializer(serializers.ModelSerializer):
         fields = ['product', 'product_name', 'product_image', 'quantity', 'price']
 
     def get_product_image(self, obj):
-        if not obj.product:
-            return None
-            
-        try:
-            request = self.context.get('request')
-            
-            # Priority 1: Main Image (Legacy)
-            if obj.product.image:
-                return request.build_absolute_uri(obj.product.image.url) if request else obj.product.image.url
-            
-            # Priority 2: Gallery Image (First one)
-            first_gallery_img = obj.product.images.first()
-            if first_gallery_img:
-                if first_gallery_img.image:
-                    return request.build_absolute_uri(first_gallery_img.image.url) if request else first_gallery_img.image.url
-                elif first_gallery_img.external_url:
-                    return first_gallery_img.external_url
-            
-            return None
-        except Exception as e:
-            return None
+        if not obj.product: return None
+        
+        image_url = None
+        request = self.context.get('request')
 
+        # 1. Main Image ഉണ്ടോ എന്ന് നോക്കുന്നു
+        if obj.product.image:
+            try:
+                image_url = obj.product.image.url
+            except: pass
+        
+        # 2. Main Image ഇല്ലെങ്കിൽ Gallery-യിൽ നോക്കുന്നു
+        if not image_url:
+            images = getattr(obj.product, 'images', None) or getattr(obj.product, 'productimage_set', None)
+            if images and images.exists():
+                first_img = images.first()
+                if first_img.image:
+                    try:
+                        image_url = first_img.image.url
+                    except: pass
+                elif first_img.external_url:
+                    return first_img.external_url # External URL ആണെങ്കിൽ നേരിട്ട് കൊടുക്കാം
+
+        # 3. URL കിട്ടിയെങ്കിൽ അത് Full URL ആക്കി മാറ്റുന്നു
+        if image_url:
+            if request:
+                return request.build_absolute_uri(image_url)
+            # Request ഇല്ലെങ്കിൽ നമ്മൾ മാനുവലായി ലോക്കൽഹോസ്റ്റ് ചേർക്കുന്നു (Fallback)
+            return f"http://127.0.0.1:8000{image_url}"
+
+        return None
+        
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     cancellation_details = CancelledOrderSerializer(read_only=True)
@@ -179,7 +210,10 @@ class AdminOrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = ['id', 'user_email', 'username', 'total_amount', 'status', 'created_at', 'shipping_details', 'items']
 
+
+# ==========================================
 #  5. ADDRESS & PASSWORD RESET
+# ==========================================
 class AddressSerializer(serializers.ModelSerializer):
     class Meta:
         model = Address

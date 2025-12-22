@@ -82,14 +82,19 @@ class LoginView(APIView):
 
 class GoogleLogin(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
-    callback_url = "postmessage"
+    callback_url = "postmessage" 
     client_class = OAuth2Client
-    def get_response(self):
-        resp = super().get_response()
-        resp.data['user'] = CustomUserSerializer(self.user).data
-        return Response
 
-#  PRODUCTS (Public & User View)
+    def get_response(self):
+        response = super().get_response()
+        user = self.user
+        refresh = RefreshToken.for_user(user)
+        response.data['access'] = str(refresh.access_token)
+        response.data['refresh'] = str(refresh)
+        response.data['user'] = CustomUserSerializer(user).data
+        
+        return response
+    
 class ProductPagination(PageNumberPagination):
     page_size = 8
     page_size_query_param = 'page_size'
