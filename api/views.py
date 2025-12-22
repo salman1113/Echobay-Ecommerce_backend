@@ -1,15 +1,14 @@
 import razorpay
 from django.conf import settings
-from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, permissions, status, filters, generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
-from django.db.models import Sum, Count
+from django.db.models import Sum
 from django.contrib.auth import authenticate, login, get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import AllowAny, IsAuthenticatedOrReadOnly
 
 # Email & Tokens
 from django.contrib.auth.tokens import default_token_generator
@@ -409,7 +408,7 @@ class SendNotificationView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminUser]
 
     def post(self, request):
-        recipient_id = request.data.get('user_id') # "all" or ID
+        recipient_id = request.data.get('user_id')
         title = request.data.get('title')
         message = request.data.get('message')
 
@@ -417,7 +416,6 @@ class SendNotificationView(APIView):
             return Response({'error': 'Title and Message required'}, status=400)
 
         if recipient_id == "all":
-            # എല്ലാ സാധാരണ യൂസർമാർക്കും അയക്കുന്നു (Admin ഒഴികെ)
             users = User.objects.filter(is_superuser=False)
             notifications = [
                 Notification(recipient=user, title=title, message=message)
@@ -427,7 +425,6 @@ class SendNotificationView(APIView):
             return Response({'message': f'Sent to {len(notifications)} users'})
         
         else:
-            # ഒരൊറ്റ യൂസർക്ക് അയക്കുന്നു
             try:
                 user = User.objects.get(id=recipient_id)
                 Notification.objects.create(recipient=user, title=title, message=message)
@@ -435,7 +432,6 @@ class SendNotificationView(APIView):
             except User.DoesNotExist:
                 return Response({'error': 'User not found'}, 404)
 
-# 2. നോട്ടിഫിക്കേഷൻ കാണാനുള്ള View (For User & Admin)
 class NotificationListView(generics.ListAPIView):
     serializer_class = NotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -452,6 +448,6 @@ class MarkNotificationReadView(APIView):
     
 
 class UserListView(generics.ListAPIView):
-    permission_classes = [permissions.IsAdminUser] # അഡ്മിന് മാത്രമേ കാണാൻ പറ്റൂ
-    serializer_class = UserSerializer # നിലവിലുള്ള UserSerializer ഉപയോഗിക്കാം
-    queryset = User.objects.filter(is_superuser=False) # അഡ്മിൻ അല്ലാത്തവരെ മാത്രം കാണിക്കും
+    permission_classes = [permissions.IsAdminUser]
+    serializer_class = UserSerializer
+    queryset = User.objects.filter(is_superuser=False) 
