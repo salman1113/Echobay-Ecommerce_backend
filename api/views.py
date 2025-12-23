@@ -105,7 +105,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedOrReadOnly] 
     pagination_class = ProductPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['name', 'description', 'category'] 
+    search_fields = ['name', 'description', 'category']
     ordering_fields = ['price', 'created_at']
 
     def get_permissions(self):
