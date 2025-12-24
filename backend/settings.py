@@ -192,3 +192,8 @@ CSRF_TRUSTED_ORIGINS = [
     'https://project-ui-react.vercel.app',
     'https://project-ui-react-git-main-salman-1113s-projects.vercel.app',
 ]
+
+#hosting
+SECURE_SSL_REDIRECT = False
+APPEND_SLASH = False
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
