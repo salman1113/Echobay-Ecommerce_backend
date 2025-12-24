@@ -82,7 +82,6 @@ class LoginView(APIView):
 class GoogleLogin(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
     client_class = OAuth2Client
-    # ഇവിടെ "postmessage" മാറ്റി നിങ്ങളുടെ സൈറ്റ് ലിങ്ക് കൊടുക്കുക
     callback_url = "https://project-ui-react.vercel.app" 
 
     def get_response(self):
