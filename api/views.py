@@ -81,8 +81,9 @@ class LoginView(APIView):
 
 class GoogleLogin(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
-    callback_url = "postmessage" 
     client_class = OAuth2Client
+    # ഇവിടെ "postmessage" മാറ്റി നിങ്ങളുടെ സൈറ്റ് ലിങ്ക് കൊടുക്കുക
+    callback_url = "https://project-ui-react.vercel.app" 
 
     def get_response(self):
         response = super().get_response()
@@ -91,7 +92,6 @@ class GoogleLogin(SocialLoginView):
         response.data['access'] = str(refresh.access_token)
         response.data['refresh'] = str(refresh)
         response.data['user'] = CustomUserSerializer(user).data
-        
         return response
     
 class ProductPagination(PageNumberPagination):
