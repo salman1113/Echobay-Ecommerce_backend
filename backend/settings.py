@@ -17,7 +17,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*'] #Hosting
 
 # Application definition
 INSTALLED_APPS = [
@@ -115,7 +115,7 @@ AUTH_USER_MODEL = 'api.User'
 # CORS Settings
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
-    "http://127.0.0.1:5173",
+    "https://your-vercel-app-name.vercel.app", #hosting
 ]
 CORS_ALLOW_CREDENTIALS = True
 
@@ -185,3 +185,5 @@ DEFAULT_FROM_EMAIL = 'EchoBay <echobay@gmail.com>'
 
 RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID')
 RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET')
+
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles') #Hosting
