@@ -83,8 +83,8 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'ecobay_db',
-        'USER': 'postgres',      
+        'NAME': 'echobaydb', #Hosting
+        'USER': 'echobayuser', #Hosting    
         'PASSWORD': os.getenv('DB_PASSWORD'), 
         'HOST': 'localhost',
         'PORT': '5432',
