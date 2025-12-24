@@ -82,7 +82,7 @@ class LoginView(APIView):
 class GoogleLogin(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
     client_class = OAuth2Client
-    callback_url = "https://project-ui-react.vercel.app" 
+    callback_url = "https://project-ui-react.vercel.app/" 
 
     def get_response(self):
         response = super().get_response()
