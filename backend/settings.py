@@ -188,3 +188,7 @@ RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET')
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles') #Hosting
 CORS_ALLOW_ALL_ORIGINS = True #Hosting
+CSRF_TRUSTED_ORIGINS = [
+    'https://project-ui-react.vercel.app',
+    'https://project-ui-react-git-main-salman-1113s-projects.vercel.app',
+]
