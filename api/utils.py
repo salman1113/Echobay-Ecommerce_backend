@@ -10,7 +10,7 @@ def custom_exception_handler(exc, context):
     if response is None:
         return Response({
             "error": "Internal Server Error",
-            "detail": str(exc) # For debugging (Remove in production)
+            "detail": str(exc)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     # Standardize error format
